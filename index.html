@@ -2,7 +2,10 @@
 <html lang="ms">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0a0a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
 <title>Gearbox Script Prompter</title>
 <style>
   :root {
@@ -19,10 +22,13 @@
     margin: 0;
     padding: 0;
     height: 100%;
+    height: 100dvh;
     background: var(--bg);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* Top bar */
@@ -32,6 +38,9 @@
     background: var(--panel);
     border-bottom: 1px solid #222;
     padding: 10px 16px;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
@@ -51,12 +60,14 @@
     background: #1f1f1f;
     color: var(--text);
     border: 1px solid #2a2a2a;
-    padding: 8px 14px;
+    padding: 10px 16px;
     border-radius: 6px;
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
     transition: background 0.15s;
+    min-height: 40px;
+    touch-action: manipulation;
   }
   button:hover { background: #2a2a2a; }
   button.primary {
@@ -72,7 +83,11 @@
     font-size: 12px;
     color: var(--muted);
   }
-  input[type="range"] { width: 100px; }
+  input[type="range"] {
+    width: 100px;
+    height: 32px;
+    touch-action: manipulation;
+  }
   .progress {
     font-size: 12px;
     color: var(--muted);
@@ -83,15 +98,18 @@
   /* Prompter view */
   .prompter {
     position: absolute;
-    top: 60px;
+    top: var(--topbar-h, 60px);
     left: 0; right: 0; bottom: 0;
     overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     padding: 50vh 8vw;
+    padding-bottom: calc(50vh + env(safe-area-inset-bottom));
   }
   .prompter::-webkit-scrollbar { width: 0; }
 
   .line {
-    font-size: clamp(28px, 4.5vw, 56px);
+    font-size: clamp(22px, 5.5vw, 56px);
     line-height: 1.35;
     font-weight: 600;
     margin: 0 0 0.9em 0;
@@ -99,6 +117,8 @@
     cursor: pointer;
     transition: color 0.25s, transform 0.25s;
     padding: 4px 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
   .line:hover { color: #777; }
   .line.active {
@@ -164,6 +184,7 @@
     color: var(--muted);
     line-height: 1.6;
     backdrop-filter: blur(6px);
+    z-index: 60;
   }
   .help kbd {
     background: #2a2a2a;
@@ -172,6 +193,47 @@
     border-radius: 3px;
     font-size: 10px;
     font-family: monospace;
+  }
+
+  /* Mobile */
+  @media (max-width: 720px) {
+    .topbar {
+      padding: 8px 10px;
+      gap: 6px;
+    }
+    .topbar h1 {
+      font-size: 11px;
+      width: 100%;
+    }
+    .controls {
+      width: 100%;
+      gap: 6px;
+    }
+    button {
+      padding: 8px 10px;
+      font-size: 12px;
+      flex: 1;
+      min-width: 0;
+    }
+    .control-group {
+      flex: 1;
+      min-width: 0;
+      font-size: 10px;
+    }
+    .control-group span:first-child { display: none; }
+    input[type="range"] { width: 100%; min-width: 60px; }
+    .progress {
+      margin-left: 0;
+      font-size: 10px;
+    }
+    .prompter { padding: 40vh 5vw 50vh; }
+    .help { display: none; }
+  }
+  @media (hover: none) {
+    button:hover { background: #1f1f1f; }
+    button.primary:hover { background: var(--accent); }
+    .line:hover { color: var(--done); }
+    .line.upcoming:hover { color: #666; }
   }
 </style>
 </head>
@@ -295,6 +357,16 @@
   const speedVal = document.getElementById('speedVal');
   const sizeInput = document.getElementById('size');
   const recDot = document.getElementById('recDot');
+  const topbar = document.querySelector('.topbar');
+
+  // Measure topbar height for responsive layout (it wraps on mobile)
+  function measureTopbar() {
+    const h = topbar.getBoundingClientRect().height;
+    document.documentElement.style.setProperty('--topbar-h', h + 'px');
+  }
+  measureTopbar();
+  window.addEventListener('resize', measureTopbar);
+  window.addEventListener('orientationchange', () => setTimeout(measureTopbar, 100));
 
   let lineEls = [];
   let activeIdx = 0;
