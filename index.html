@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gearbox Script Prompter</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #141414;
+    --text: #f5f5f5;
+    --muted: #888;
+    --accent: #ffcc00;
+    --accent-hot: #ff4d4d;
+    --done: #444;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+
+  /* Top bar */
+  .topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: var(--panel);
+    border-bottom: 1px solid #222;
+    padding: 10px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    z-index: 100;
+  }
+  .topbar h1 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    background: #1f1f1f;
+    color: var(--text);
+    border: 1px solid #2a2a2a;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s;
+  }
+  button:hover { background: #2a2a2a; }
+  button.primary {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+  button.primary:hover { background: #ffd633; }
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  input[type="range"] { width: 100px; }
+  .progress {
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Prompter view */
+  .prompter {
+    position: absolute;
+    top: 60px;
+    left: 0; right: 0; bottom: 0;
+    overflow-y: auto;
+    padding: 50vh 8vw;
+  }
+  .prompter::-webkit-scrollbar { width: 0; }
+
+  .line {
+    font-size: clamp(28px, 4.5vw, 56px);
+    line-height: 1.35;
+    font-weight: 600;
+    margin: 0 0 0.9em 0;
+    color: var(--done);
+    cursor: pointer;
+    transition: color 0.25s, transform 0.25s;
+    padding: 4px 0;
+  }
+  .line:hover { color: #777; }
+  .line.active {
+    color: var(--accent);
+    transform: scale(1.02);
+    transform-origin: left;
+  }
+  .line.upcoming { color: #666; }
+
+  .pause {
+    font-size: clamp(16px, 2vw, 22px);
+    color: #555;
+    font-style: italic;
+    font-weight: 400;
+    margin: -0.4em 0 1.2em 0;
+    padding-left: 20px;
+    border-left: 2px solid #2a2a2a;
+  }
+
+  .section-break {
+    height: 1px;
+    background: #1f1f1f;
+    margin: 2em 0;
+  }
+
+  /* Reading guide line */
+  .guide {
+    position: fixed;
+    top: 50%;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255,204,0,0.15), transparent);
+    pointer-events: none;
+    z-index: 50;
+  }
+
+  /* Recording indicator */
+  .rec-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--accent-hot);
+    display: inline-block;
+    margin-right: 6px;
+    animation: pulse 1s infinite;
+    visibility: hidden;
+  }
+  .rec-dot.on { visibility: visible; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Help */
+  .help {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: rgba(20,20,20,0.9);
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+    backdrop-filter: blur(6px);
+  }
+  .help kbd {
+    background: #2a2a2a;
+    color: var(--text);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1><span class="rec-dot" id="recDot"></span>Gearbox Script Prompter</h1>
+  <div class="controls">
+    <button class="primary" id="playBtn">▶ Auto-Scroll</button>
+    <button id="resetBtn">↺ Reset</button>
+    <div class="control-group">
+      <span>Speed</span>
+      <input type="range" id="speed" min="10" max="120" value="40" />
+      <span id="speedVal">40</span>
+    </div>
+    <div class="control-group">
+      <span>Size</span>
+      <input type="range" id="size" min="20" max="80" value="42" />
+    </div>
+  </div>
+  <div class="progress" id="progress">0 / 0</div>
+</div>
+
+<div class="guide"></div>
+
+<div class="prompter" id="prompter"></div>
+
+<div class="help">
+  <kbd>Space</kbd> play/pause &nbsp;
+  <kbd>↑</kbd>/<kbd>↓</kbd> nav line &nbsp;
+  <kbd>R</kbd> reset &nbsp;
+  <kbd>+</kbd>/<kbd>-</kbd> speed
+</div>
+
+<script>
+  // Script segments. Use { type: 'line', text } and { type: 'pause', text } and { type: 'break' }
+  const script = [
+    { type: 'line', text: '"Bang… income yang selesa kalau kereta nak kena overhaul gearbox…"' },
+    { type: 'line', text: '"Jom kira."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Kalau full overhaul biasanya melibatkan:"' },
+    { type: 'line', text: '"Parts… katakan pulley dan steel belt RM2,000"' },
+    { type: 'line', text: '"Labour pula kita anggarkan… RM1,200"' },
+    { type: 'line', text: '"Minyak gearbox + filter… RM400"' },
+    { type: 'line', text: '"Gasket, seal, small parts… RM600"' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Total… RM4,200."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Kalau kes ringan… mungkin RM4k."' },
+    { type: 'line', text: '"Kalau teruk sikit… RM6k sampai RM7k."' },
+    { type: 'line', text: '"Worst case… RM8,000."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Kereta pula tinggal bengkel 3–5 hari."' },
+    { type: 'line', text: '"Grab ulang-alik…"' },
+    { type: 'line', text: '"Kerja pun boleh terganggu…"' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Realistically… RM4,000 sampai RM8,000."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Okay… sekarang kita masuk part gaji."' },
+    { type: 'line', text: '"Katakan gaji RM5,000."' },
+    { type: 'line', text: '"Kalau kau simpan 20% setiap bulan…"' },
+    { type: 'line', text: '"4 bulan baru ada RM4,000."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Tapi repair…"' },
+    { type: 'line', text: '"RM4,000 sampai RM8,000."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Masih rasa selesa kalau benda ni jadi tiba-tiba?"' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Servis gearbox sebenarnya…"' },
+    { type: 'line', text: '"antara servis minyak yang paling krusial untuk kereta."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Macam servis minyak enjin…"' },
+    { type: 'line', text: '"kalau engine oil jaga enjin…"' },
+    { type: 'line', text: '"ATF gearbox pula jaga smooth shifting, pressure, dan suhu gearbox."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Tapi ramai orang tak buat sebab tak nampak effect dia terus."' },
+    { type: 'line', text: '"Sampai satu hari…"' },
+    { type: 'line', text: '"baru keluar cost macam tadi."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Sebagai langkah awal… jaga servis gearbox anda."' },
+    { type: 'line', text: '"One X Transmission sekarang ada promo servis gearbox."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"RM114 sahaja (tak termasuk minyak)."' },
+    { type: 'line', text: '"Dah termasuk auto filter."' },
+    { type: 'line', text: '"FREE diagnose sekali."' },
+    { type: 'line', text: '"dan OBD2 device FREE."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"OBD2 ni bantu kau baca condition kereta secara real-time…"' },
+    { type: 'line', text: '"contoh macam error code, live data, dan health check kereta…"' },
+    { type: 'line', text: '"supaya kau boleh detect awal sebelum jadi rosak dan kos jadi lebih mahal."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Kalau ATF oil pula…"' },
+    { type: 'line', text: '"RM65 untuk 1 liter."' },
+    { type: 'break' },
+
+    { type: 'line', text: '"Promo hanya untuk 100 orang pertama sahaja."' },
+    { type: 'line', text: '"Jangan lambat."' },
+    { type: 'line', text: '"Dapatkan servis kami sekarang."' },
+  ];
+
+  const prompter = document.getElementById('prompter');
+  const progressEl = document.getElementById('progress');
+  const playBtn = document.getElementById('playBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const speedInput = document.getElementById('speed');
+  const speedVal = document.getElementById('speedVal');
+  const sizeInput = document.getElementById('size');
+  const recDot = document.getElementById('recDot');
+
+  let lineEls = [];
+  let activeIdx = 0;
+  let playing = false;
+  let rafId = null;
+
+  // Render
+  script.forEach((seg, i) => {
+    if (seg.type === 'break') {
+      const div = document.createElement('div');
+      div.className = 'section-break';
+      prompter.appendChild(div);
+    } else if (seg.type === 'pause') {
+      const p = document.createElement('div');
+      p.className = 'pause';
+      p.textContent = seg.text;
+      prompter.appendChild(p);
+    } else {
+      const p = document.createElement('p');
+      p.className = 'line upcoming';
+      p.textContent = seg.text;
+      p.dataset.idx = lineEls.length;
+      p.addEventListener('click', () => {
+        setActive(parseInt(p.dataset.idx));
+        scrollToActive();
+      });
+      prompter.appendChild(p);
+      lineEls.push(p);
+    }
+  });
+
+  function setActive(idx) {
+    if (idx < 0) idx = 0;
+    if (idx >= lineEls.length) idx = lineEls.length - 1;
+    activeIdx = idx;
+    lineEls.forEach((el, i) => {
+      el.classList.remove('active', 'upcoming');
+      if (i === idx) el.classList.add('active');
+      else if (i > idx) el.classList.add('upcoming');
+    });
+    progressEl.textContent = `${idx + 1} / ${lineEls.length}`;
+  }
+
+  function scrollToActive() {
+    const el = lineEls[activeIdx];
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const containerRect = prompter.getBoundingClientRect();
+    const target = prompter.scrollTop + rect.top - containerRect.top - (containerRect.height / 2) + (rect.height / 2);
+    prompter.scrollTo({ top: target, behavior: 'smooth' });
+    scrollAccum = prompter.scrollTop;
+  }
+
+  // Auto-scroll loop
+  let lastT = 0;
+  let scrollAccum = 0;
+  function tick(t) {
+    if (!playing) return;
+    if (!lastT) { lastT = t; rafId = requestAnimationFrame(tick); return; }
+    const dt = Math.min((t - lastT) / 1000, 0.1); // clamp dt to avoid jumps after tab blur
+    lastT = t;
+    const speed = parseFloat(speedInput.value); // px/sec
+    scrollAccum += speed * dt;
+    prompter.scrollTop = scrollAccum;
+    // If browser clamped (end of scroll), resync
+    if (Math.abs(prompter.scrollTop - scrollAccum) > 2) {
+      scrollAccum = prompter.scrollTop;
+    }
+    // Update active line based on which one crosses center
+    const center = prompter.getBoundingClientRect().top + prompter.getBoundingClientRect().height / 2;
+    let bestIdx = activeIdx;
+    let bestDist = Infinity;
+    lineEls.forEach((el, i) => {
+      const r = el.getBoundingClientRect();
+      const elCenter = r.top + r.height / 2;
+      const d = Math.abs(elCenter - center);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    });
+    if (bestIdx !== activeIdx) setActive(bestIdx);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function play() {
+    playing = true;
+    lastT = 0;
+    scrollAccum = prompter.scrollTop;
+    playBtn.textContent = '⏸ Pause';
+    playBtn.classList.remove('primary');
+    recDot.classList.add('on');
+    rafId = requestAnimationFrame(tick);
+  }
+  function pause() {
+    playing = false;
+    playBtn.textContent = '▶ Auto-Scroll';
+    playBtn.classList.add('primary');
+    recDot.classList.remove('on');
+    if (rafId) cancelAnimationFrame(rafId);
+  }
+  function reset() {
+    pause();
+    setActive(0);
+    prompter.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  playBtn.addEventListener('click', () => playing ? pause() : play());
+  resetBtn.addEventListener('click', reset);
+  speedInput.addEventListener('input', () => speedVal.textContent = speedInput.value);
+  sizeInput.addEventListener('input', () => {
+    document.documentElement.style.setProperty('--font-base', sizeInput.value + 'px');
+    lineEls.forEach(el => el.style.fontSize = sizeInput.value + 'px');
+  });
+
+  // Keyboard
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
+    else if (e.code === 'ArrowDown') { e.preventDefault(); setActive(activeIdx + 1); scrollToActive(); }
+    else if (e.code === 'ArrowUp') { e.preventDefault(); setActive(activeIdx - 1); scrollToActive(); }
+    else if (e.key === 'r' || e.key === 'R') { reset(); }
+    else if (e.key === '+' || e.key === '=') {
+      speedInput.value = Math.min(120, parseInt(speedInput.value) + 5);
+      speedVal.textContent = speedInput.value;
+    }
+    else if (e.key === '-' || e.key === '_') {
+      speedInput.value = Math.max(10, parseInt(speedInput.value) - 5);
+      speedVal.textContent = speedInput.value;
+    }
+  });
+
+  setActive(0);
+</script>
+
+</body>
+</html>
