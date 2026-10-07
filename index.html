@@ -195,6 +195,100 @@
     font-family: monospace;
   }
 
+  /* Script editor */
+  .editor {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .editor.open { display: flex; }
+  .editor-panel {
+    background: var(--panel);
+    border: 1px solid #2a2a2a;
+    border-radius: 10px;
+    width: min(900px, 100%);
+    height: min(85vh, 100%);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .editor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #222;
+  }
+  .editor-head h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .editor-hint {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+    padding: 10px 16px 0;
+  }
+  .editor-hint code {
+    background: #2a2a2a;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+  .editor textarea {
+    flex: 1;
+    margin: 10px 16px;
+    background: #0e0e0e;
+    color: var(--text);
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 15px;
+    line-height: 1.5;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    min-height: 120px;
+  }
+  .editor textarea:focus { border-color: var(--accent); }
+  .editor-foot {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 12px 16px;
+    border-top: 1px solid #222;
+  }
+  .editor-foot .spacer { flex: 1; }
+  .editor-count { font-size: 12px; color: var(--muted); }
+  button.danger {
+    background: #2a1414;
+    border-color: #4a1f1f;
+    color: #ff8a8a;
+  }
+  button.danger:hover { background: #3a1a1a; }
+
+  .empty {
+    color: var(--muted);
+    font-size: clamp(16px, 2.5vw, 22px);
+    text-align: center;
+    margin-top: -30vh;
+  }
+  .empty button { margin-top: 16px; }
+
   /* Mobile */
   @media (max-width: 720px) {
     .topbar {
@@ -228,6 +322,10 @@
     }
     .prompter { padding: 40vh 5vw 50vh; }
     .help { display: none; }
+    .editor { padding: 8px; }
+    .editor-panel { height: 100%; border-radius: 8px; }
+    .editor-foot button { flex: 1 1 40%; }
+    .editor-foot .spacer, .editor-count { display: none; }
   }
   @media (hover: none) {
     button:hover { background: #1f1f1f; }
@@ -244,6 +342,7 @@
   <div class="controls">
     <button class="primary" id="playBtn">▶ Auto-Scroll</button>
     <button id="resetBtn">↺ Reset</button>
+    <button id="editBtn">✎ Script</button>
     <div class="control-group">
       <span>Speed</span>
       <input type="range" id="speed" min="10" max="120" value="40" />
@@ -265,12 +364,34 @@
   <kbd>Space</kbd> play/pause &nbsp;
   <kbd>↑</kbd>/<kbd>↓</kbd> nav line &nbsp;
   <kbd>R</kbd> reset &nbsp;
-  <kbd>+</kbd>/<kbd>-</kbd> speed
+  <kbd>+</kbd>/<kbd>-</kbd> speed &nbsp;
+  <kbd>E</kbd> edit script
+</div>
+
+<div class="editor" id="editor">
+  <div class="editor-panel">
+    <div class="editor-head">
+      <h2>Edit Script</h2>
+      <button id="editorClose">✕ Close</button>
+    </div>
+    <div class="editor-hint">
+      One line per prompter line. Blank line = section break.
+      Start a line with <code>[</code> or <code>//</code> for a stage note (e.g. <code>[pause 2s]</code>).
+    </div>
+    <textarea id="editorText" placeholder="Paste or type your script here…" spellcheck="false"></textarea>
+    <div class="editor-foot">
+      <button class="primary" id="editorSave">✓ Save &amp; Use</button>
+      <button id="editorDefault">↩ Restore Default</button>
+      <button class="danger" id="editorClear">🗑 Delete Script</button>
+      <span class="spacer"></span>
+      <span class="editor-count" id="editorCount"></span>
+    </div>
+  </div>
 </div>
 
 <script>
-  // Script segments. Use { type: 'line', text } and { type: 'pause', text } and { type: 'break' }
-  const script = [
+  // Default script segments. Use { type: 'line', text } and { type: 'pause', text } and { type: 'break' }
+  const defaultScript = [
     { type: 'line', text: '"Bang… income yang selesa kalau kereta nak kena overhaul gearbox…"' },
     { type: 'line', text: '"Jom kira."' },
     { type: 'break' },
@@ -373,32 +494,144 @@
   let playing = false;
   let rafId = null;
 
-  // Render
-  script.forEach((seg, i) => {
-    if (seg.type === 'break') {
-      const div = document.createElement('div');
-      div.className = 'section-break';
-      prompter.appendChild(div);
-    } else if (seg.type === 'pause') {
-      const p = document.createElement('div');
-      p.className = 'pause';
-      p.textContent = seg.text;
-      prompter.appendChild(p);
-    } else {
-      const p = document.createElement('p');
-      p.className = 'line upcoming';
-      p.textContent = seg.text;
-      p.dataset.idx = lineEls.length;
-      p.addEventListener('click', () => {
-        setActive(parseInt(p.dataset.idx));
-        scrollToActive();
-      });
-      prompter.appendChild(p);
-      lineEls.push(p);
+  // ---- Script storage ----
+  const STORAGE_KEY = 'prompter.script.v1';
+  let script = loadScript();
+
+  function loadScript() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw !== null) return textToScript(raw);
+    } catch (e) { /* storage unavailable: fall through */ }
+    return defaultScript.slice();
+  }
+  function saveScriptText(text) {
+    try { localStorage.setItem(STORAGE_KEY, text); } catch (e) { /* ignore */ }
+  }
+
+  // Plain-text format <-> segments
+  // - non-empty line           -> { type: 'line' }
+  // - blank line               -> { type: 'break' } (consecutive blanks collapse)
+  // - line starting [ or //    -> { type: 'pause' } stage note
+  function textToScript(text) {
+    const out = [];
+    const rows = text.replace(/\r\n?/g, '\n').split('\n');
+    rows.forEach(row => {
+      const t = row.trim();
+      if (!t) {
+        if (out.length && out[out.length - 1].type !== 'break') out.push({ type: 'break' });
+      } else if (t.startsWith('[') || t.startsWith('//')) {
+        out.push({ type: 'pause', text: t.replace(/^\/\/\s*/, '') });
+      } else {
+        out.push({ type: 'line', text: t });
+      }
+    });
+    while (out.length && out[out.length - 1].type === 'break') out.pop();
+    return out;
+  }
+  function scriptToText(segs) {
+    return segs.map(seg => {
+      if (seg.type === 'break') return '';
+      if (seg.type === 'pause') return seg.text.startsWith('[') ? seg.text : '// ' + seg.text;
+      return seg.text;
+    }).join('\n');
+  }
+
+  // ---- Render ----
+  function render() {
+    pause();
+    prompter.innerHTML = '';
+    lineEls = [];
+    activeIdx = 0;
+    scrollAccum = 0;
+
+    if (!script.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.innerHTML = 'No script loaded.<br>';
+      const b = document.createElement('button');
+      b.className = 'primary';
+      b.textContent = '✎ Add Script';
+      b.addEventListener('click', openEditor);
+      empty.appendChild(b);
+      prompter.appendChild(empty);
+      progressEl.textContent = '0 / 0';
+      return;
     }
+
+    script.forEach((seg) => {
+      if (seg.type === 'break') {
+        const div = document.createElement('div');
+        div.className = 'section-break';
+        prompter.appendChild(div);
+      } else if (seg.type === 'pause') {
+        const p = document.createElement('div');
+        p.className = 'pause';
+        p.textContent = seg.text;
+        prompter.appendChild(p);
+      } else {
+        const p = document.createElement('p');
+        p.className = 'line upcoming';
+        p.textContent = seg.text;
+        p.style.fontSize = sizeInput.value + 'px';
+        p.dataset.idx = lineEls.length;
+        p.addEventListener('click', () => {
+          setActive(parseInt(p.dataset.idx));
+          scrollToActive();
+        });
+        prompter.appendChild(p);
+        lineEls.push(p);
+      }
+    });
+    prompter.scrollTop = 0;
+    setActive(0);
+  }
+
+  // ---- Editor ----
+  const editor = document.getElementById('editor');
+  const editorText = document.getElementById('editorText');
+  const editorCount = document.getElementById('editorCount');
+  const editBtn = document.getElementById('editBtn');
+
+  function updateCount() {
+    const segs = textToScript(editorText.value);
+    const n = segs.filter(s => s.type === 'line').length;
+    editorCount.textContent = n + ' line' + (n === 1 ? '' : 's');
+  }
+  function openEditor() {
+    pause();
+    editorText.value = scriptToText(script);
+    updateCount();
+    editor.classList.add('open');
+    setTimeout(() => editorText.focus(), 50);
+  }
+  function closeEditor() {
+    editor.classList.remove('open');
+  }
+  function applyText(text) {
+    script = textToScript(text);
+    saveScriptText(text);
+    render();
+    closeEditor();
+  }
+
+  editBtn.addEventListener('click', openEditor);
+  document.getElementById('editorClose').addEventListener('click', closeEditor);
+  document.getElementById('editorSave').addEventListener('click', () => applyText(editorText.value));
+  document.getElementById('editorDefault').addEventListener('click', () => {
+    if (editorText.value.trim() && !confirm('Replace the current text with the default script?')) return;
+    editorText.value = scriptToText(defaultScript);
+    updateCount();
   });
+  document.getElementById('editorClear').addEventListener('click', () => {
+    if (!confirm('Delete the whole script? The prompter will be empty until you add a new one.')) return;
+    applyText('');
+  });
+  editorText.addEventListener('input', updateCount);
+  editor.addEventListener('click', (e) => { if (e.target === editor) closeEditor(); });
 
   function setActive(idx) {
+    if (!lineEls.length) { progressEl.textContent = '0 / 0'; return; }
     if (idx < 0) idx = 0;
     if (idx >= lineEls.length) idx = lineEls.length - 1;
     activeIdx = idx;
@@ -481,6 +714,12 @@
 
   // Keyboard
   document.addEventListener('keydown', (e) => {
+    if (editor.classList.contains('open')) {
+      if (e.key === 'Escape') closeEditor();
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); applyText(editorText.value); }
+      return;
+    }
+    if (e.key === 'e' || e.key === 'E') { e.preventDefault(); openEditor(); return; }
     if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
     else if (e.code === 'ArrowDown') { e.preventDefault(); setActive(activeIdx + 1); scrollToActive(); }
     else if (e.code === 'ArrowUp') { e.preventDefault(); setActive(activeIdx - 1); scrollToActive(); }
@@ -495,7 +734,7 @@
     }
   });
 
-  setActive(0);
+  render();
 </script>
 
 </body>
